@@ -1,0 +1,17 @@
+[package]
+name = "egui_backend_selector_test"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+egui_backend_selector = {path = ".."}
+egui = "0.33.0"
+log = "0.4.29"
+trivial_log = "0.1.0"
+egui_extras = "0.33.3"
+eframe = { version = "0.33.0", default-features = false, features = [
+    "default_fonts",
+    "glow",
+    "wayland",
+    "x11",
+] }

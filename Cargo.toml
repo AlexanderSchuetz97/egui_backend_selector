@@ -1,0 +1,23 @@
+[package]
+name = "egui_backend_selector"
+version = "0.1.0"
+edition = "2024"
+
+[features]
+default = ["glow", "persistence"]
+persistence = ["eframe/persistence"]
+glow = ["eframe/glow"]
+wgpu = ["eframe/wgpu"]
+
+[dependencies]
+eframe = { version = "^0.33.0", default-features = false }
+egui = { version = "^0.33.0", default-features = false }
+egui_software_backend = {version = "0.0.1", features = ["winit"]}
+is_main_thread = "0.1.0"
+ron = "^0.12.0"
+log = "^0.4.0"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = ["Win32_UI_WindowsAndMessaging"] }
+raw-cpuid = "^11.6.0"
+glfw = "=0.51.0" # Newer versions don't compile their C-Bindings successfully on all systems.
