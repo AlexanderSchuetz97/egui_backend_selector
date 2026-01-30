@@ -12,6 +12,7 @@ use std::ops::{Deref, DerefMut};
 use std::path::PathBuf;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering::Relaxed;
+use main_thread::IsMainThread;
 
 /// Number of elements in the enum below
 const NUM_BACKENDS: usize = 2;
@@ -448,7 +449,7 @@ pub fn run_app<T: App>(
     backend_configuration: impl Into<BackendConfiguration>,
     mut app_factory: impl FnMut(Context) -> T,
 ) -> Result<(), Box<dyn Error>> {
-    if Some(false) == is_main_thread::is_main_thread() {
+    if IsMainThread::OtherThread == main_thread::is_main_thread() {
         return Err("Current thread is not the main thread".into());
     }
 
@@ -543,7 +544,7 @@ fn determine_backend() -> Option<Backend> {
 /// Windows-specific code to determine which backend to use.
 #[cfg(windows)]
 fn determine_backend() -> Option<Backend> {
-    if Some(false) == is_main_thread::is_main_thread() {
+    if IsMainThread::OtherThread == main_thread::is_main_thread() {
         return None;
     }
 
