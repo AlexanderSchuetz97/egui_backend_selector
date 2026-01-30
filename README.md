@@ -80,3 +80,4 @@ fn main() {
 
 * If the opengl version on the system is lower than 3.2 the software backend is chosen.
   To check this, the crate creates a small offscreen opengl context which is then discarded again.
+* For all other windows installations eframe is chosen.
