@@ -21,9 +21,9 @@ however, since it is not hardware accelerated,
 it is going to be slower for systems that have a gpu and proper drivers installed.
 
 This crate contains all the platform-specific logic necessary to determine which backend
-will work at runtime and will then delegate the execution of your app to that backend.
+will work at runtime and will then delegate the execution of your app to the fastest backend.
 To achieve this, the crate provides a thin "drop-in" wrapper for eframe::App as well
-as the equivalent of DGriffin91's software backend.
+as the equivalent of it in DGriffin91's software backend.
 
 ## Example
 

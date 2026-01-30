@@ -1,23 +1,27 @@
 #[cfg(all(not(feature = "glow"), not(feature = "wgpu")))]
 compile_error!("Either glow or wgpu feature must be enabled for eframe to be useful.");
 
-use std::collections::HashMap;
 use eframe::egui::Context;
 use eframe::{Frame, IntegrationInfo, NativeOptions, Storage};
+use egui::ViewportBuilder;
 use egui_software_backend::{SoftwareBackend, SoftwareBackendAppConfiguration};
+use log::error;
+use std::collections::HashMap;
 use std::error::Error;
 use std::ops::{Deref, DerefMut};
-use std::path::{Path, PathBuf};
-use std::sync::atomic::Ordering::Relaxed;
+use std::path::PathBuf;
 use std::sync::atomic::AtomicUsize;
-use log::error;
+use std::sync::atomic::Ordering::Relaxed;
 
+/// Number of elements in the enum below
 const NUM_BACKENDS: usize = 2;
+
+/// Contains one element for each backend supported by the backend selector.
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 #[non_exhaustive]
 pub enum Backend {
     SoftwareBackend,
-    Eframe
+    Eframe,
 }
 
 //0 - not decided
@@ -25,6 +29,8 @@ pub enum Backend {
 //2 - Eframe not launched
 //3 - SoftwareBackend launched
 //4 - Eframe launched
+
+/// Static state enum.
 static STATE: AtomicUsize = AtomicUsize::new(0);
 
 /// Overwrites the selected backend.
@@ -61,26 +67,23 @@ pub fn is_launched() -> bool {
 pub fn get_backend() -> Option<Backend> {
     let state = STATE.load(Relaxed);
     Some(match state {
-        1 => Backend::SoftwareBackend,
-        2 => Backend::Eframe,
-        3 => Backend::SoftwareBackend,
-        4 => Backend::Eframe,
-        _=> {
+        2 | 4 => Backend::Eframe,
+        3 | 1 => Backend::SoftwareBackend,
+        _ => {
             return match determine_backend() {
                 None => None,
                 Some(Backend::SoftwareBackend) => {
-                    _= STATE.compare_exchange(0, 1, Relaxed, Relaxed);
+                    _ = STATE.compare_exchange(0, 1, Relaxed, Relaxed);
                     Some(Backend::SoftwareBackend)
-                },
+                }
                 Some(Backend::Eframe) => {
-                    _= STATE.compare_exchange(0, 2, Relaxed, Relaxed);
+                    _ = STATE.compare_exchange(0, 2, Relaxed, Relaxed);
                     Some(Backend::Eframe)
                 }
-            }
+            };
         }
     })
 }
-
 
 /// Platform-specific interop to interact with the backend
 #[non_exhaustive]
@@ -89,11 +92,16 @@ pub enum BackendInterop<'a> {
     Eframe(&'a mut Frame),
 }
 
-/// Wrapper for the SoftwareBackend
+/// Wrapper for the `SoftwareBackend`
 pub struct SoftwareBackendInterop<'a> {
+    /// The reference to the actual software backend.
     swb: &'a mut SoftwareBackend,
+
+    /// Holds the `IntegrationInfo` which contains the frame time.
     integration_info: &'a mut IntegrationInfo,
-    storage: &'a mut Option<Box<dyn Storage>>
+
+    /// Holds the storage manager if enabled.
+    storage: &'a mut Option<Box<dyn Storage>>,
 }
 
 impl Deref for SoftwareBackendInterop<'_> {
@@ -111,51 +119,47 @@ impl DerefMut for SoftwareBackendInterop<'_> {
 }
 
 impl BackendInterop<'_> {
-
-    pub fn backend(&self) -> Backend {
+    #[must_use]
+    pub const fn backend(&self) -> Backend {
         match self {
             BackendInterop::SoftwareBackend(_) => Backend::SoftwareBackend,
-            BackendInterop::Eframe(_) => Backend::Eframe
+            BackendInterop::Eframe(_) => Backend::Eframe,
         }
     }
 
-    pub fn backend_name(&self) -> &'static str {
+    #[must_use]
+    pub const fn backend_name(&self) -> &'static str {
         match self {
             BackendInterop::SoftwareBackend(_) => "Software Backend",
             BackendInterop::Eframe(_) => "eframe",
         }
     }
 
+    #[must_use]
+    #[allow(clippy::missing_const_for_fn)]
     pub fn is_web(&self) -> bool {
         //We don't run on the web yet at all...
         false
     }
 
+    #[must_use]
     pub fn into(&self) -> &IntegrationInfo {
         match self {
-            BackendInterop::SoftwareBackend(swbi) => {
-                &swbi.integration_info
-            }
-            BackendInterop::Eframe(efr) => {
-                efr.info()
-            }
+            BackendInterop::SoftwareBackend(swbi) => swbi.integration_info,
+            BackendInterop::Eframe(efr) => efr.info(),
         }
     }
 
     pub fn storage(&self) -> Option<&dyn Storage> {
         match self {
-            BackendInterop::SoftwareBackend(swbi) => {
-                swbi.storage.as_ref().map(Box::as_ref)
-            },
+            BackendInterop::SoftwareBackend(swbi) => swbi.storage.as_ref().map(Box::as_ref),
             BackendInterop::Eframe(efr) => efr.storage(),
         }
     }
 
     pub fn storage_mut(&mut self) -> Option<&mut (dyn Storage + 'static)> {
         match self {
-            BackendInterop::SoftwareBackend(swbi) => {
-                swbi.storage.as_mut().map(Box::as_mut)
-            },
+            BackendInterop::SoftwareBackend(swbi) => swbi.storage.as_mut().map(Box::as_mut),
             BackendInterop::Eframe(efr) => efr.storage_mut(),
         }
     }
@@ -169,7 +173,10 @@ impl BackendInterop<'_> {
     }
 
     #[cfg(feature = "glow")]
-    pub fn register_native_glow_texture(&mut self, native: eframe::glow::Texture) -> egui::TextureId {
+    pub fn register_native_glow_texture(
+        &mut self,
+        native: eframe::glow::Texture,
+    ) -> egui::TextureId {
         match self {
             BackendInterop::SoftwareBackend(_) => egui::TextureId::User(0), //DUMMY
             BackendInterop::Eframe(efr) => efr.register_native_glow_texture(native),
@@ -179,25 +186,24 @@ impl BackendInterop<'_> {
 
 /// App traits
 pub trait App {
-
     /// The update loop
     fn update(&mut self, context: &Context, backend: BackendInterop<'_>);
-
 
     /// This function is called once when the application exists.
     /// It is NOT called when using eframe with the wgpu backend.
     fn on_exit(&mut self) {}
 
-    /// This function is called before on_exit and allows you to save state
+    /// This function is called before `on_exit` and allows you to save state
     /// It might be called periodically too
     fn save(&mut self, storage: &mut dyn Storage) {
-        _= storage;
+        _ = storage;
     }
 }
 
+/// Wrapper struct for a local app state.
 struct AppWrapper<T: App>(T, Option<Box<dyn Storage>>, IntegrationInfo);
 
-impl <T: App> eframe::App for AppWrapper<T> {
+impl<T: App> eframe::App for AppWrapper<T> {
     fn update(&mut self, ctx: &Context, frame: &mut Frame) {
         self.0.update(ctx, BackendInterop::Eframe(frame));
     }
@@ -208,25 +214,26 @@ impl <T: App> eframe::App for AppWrapper<T> {
 
     #[cfg(feature = "glow")]
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
-        self.0.on_exit()
+        self.0.on_exit();
     }
 
     #[cfg(not(feature = "glow"))]
     fn on_exit(&mut self) {
         self.0.on_exit()
     }
-
-
 }
-impl <T: App> egui_software_backend::App for AppWrapper<T> {
+impl<T: App> egui_software_backend::App for AppWrapper<T> {
     fn update(&mut self, ctx: &Context, software_backend: &mut SoftwareBackend) {
         self.2.cpu_usage = software_backend.last_frame_time().map(|a| a.as_secs_f32());
 
-        self.0.update(ctx, BackendInterop::SoftwareBackend(SoftwareBackendInterop {
-            swb: software_backend,
-            integration_info: &mut self.2,
-            storage: &mut self.1,
-        }));
+        self.0.update(
+            ctx,
+            BackendInterop::SoftwareBackend(SoftwareBackendInterop {
+                swb: software_backend,
+                integration_info: &mut self.2,
+                storage: &mut self.1,
+            }),
+        );
     }
 
     fn on_exit(&mut self, _ctx: &Context) {
@@ -237,31 +244,52 @@ impl <T: App> egui_software_backend::App for AppWrapper<T> {
 
         self.0.on_exit();
     }
-
-
 }
 
 #[derive(Default, Clone)]
 pub struct BackendConfiguration {
-    viewport: egui::ViewportBuilder,
+    /// Egui `ViewportBuilder`. This struct is shared by both backends and contains
+    /// 90% of the settings one wishes to set.
+    /// This viewport will always take precedence over the viewport set in the other structs.
+    viewport: ViewportBuilder,
+
+    /// The eframe specific options if any.
     eframe_options: Option<NativeOptions>,
-    software_backend_options: Option<SoftwareBackendAppConfiguration>
+
+    /// The software backend specific options if any.
+    software_backend_options: Option<SoftwareBackendAppConfiguration>,
 }
 
+impl BackendConfiguration {
+    /// Creates a configuration for all backends.
+    /// Note that the `viewport_builder` argument is used instead of the viewports configured inside the backend configurations.
+    #[must_use]
+    pub const fn new(
+        viewport_builder: ViewportBuilder,
+        native_options: NativeOptions,
+        software_backend_options: SoftwareBackendAppConfiguration,
+    ) -> Self {
+        Self {
+            viewport: viewport_builder,
+            eframe_options: Some(native_options),
+            software_backend_options: Some(software_backend_options),
+        }
+    }
+}
 
 impl From<egui::ViewportBuilder> for BackendConfiguration {
     fn from(value: egui::ViewportBuilder) -> Self {
-        BackendConfiguration {
+        Self {
             viewport: value,
             eframe_options: None,
-            software_backend_options: None
+            software_backend_options: None,
         }
     }
 }
 
 impl From<NativeOptions> for BackendConfiguration {
     fn from(value: NativeOptions) -> Self {
-        BackendConfiguration {
+        Self {
             viewport: value.viewport.clone(),
             eframe_options: Some(value),
             software_backend_options: None,
@@ -269,66 +297,61 @@ impl From<NativeOptions> for BackendConfiguration {
     }
 }
 
-
 impl From<SoftwareBackendAppConfiguration> for BackendConfiguration {
     fn from(value: SoftwareBackendAppConfiguration) -> Self {
-        BackendConfiguration {
+        Self {
             viewport: value.viewport_builder.clone(),
-            
+
             eframe_options: None,
-            software_backend_options: Some(value)
+            software_backend_options: Some(value),
         }
     }
 }
 
-
+/// "eframe" compatible Key Value Storage implementation.
 #[cfg(feature = "persistence")]
-struct KVStroage {
+struct KVStorage {
+    /// Path to the file where we will save the data.
     ron_file: PathBuf,
+
+    /// The state that was loaded/modified and flush will write to disk.
     kv: HashMap<String, String>,
-    dirty: bool
+
+    /// Did we change anything?
+    dirty: bool,
 }
 
 #[cfg(feature = "persistence")]
-fn write_ron(ron_path: impl AsRef<Path>, kvs: &HashMap<String, String>) {
-    let rp = ron_path.as_ref();
-
-    if let Some(parent) = rp.parent() && !parent.exists() {
-        _ = std::fs::create_dir_all(parent);
-    }
-
-    let Ok(file) = std::fs::File::create(rp)
-        .inspect_err(|e| error!("Failed to save application state. Could not create file {} err={e}", rp.display())) else {
-        return;
-    };
-
-    let mut writer = std::io::BufWriter::new(file);
-    if let Err(e) =  ron::Options::default()
-        .to_io_writer_pretty(&mut writer, kvs, ron::ser::PrettyConfig::default()) {
-        error!("Failed to save application state. Could not write file {} err={e}", rp.display())
-    }
-}
-
-#[cfg(feature = "persistence")]
-impl KVStroage {
-    pub fn new(app_name: String) -> Option<Self> {
-        let data_dir = eframe::storage_dir(&app_name)?;
+impl KVStorage {
+    /// Constructor
+    pub fn new(app_name: &str) -> Option<Self> {
+        let data_dir = eframe::storage_dir(app_name)?;
         let ron_file = data_dir.join("app.ron");
 
         let initial_data = if ron_file.exists() {
-            let file = std::fs::File::open(&ron_file).inspect_err(|e| {
-                error!("Failed to read application state. Could not read file {} err={e}", ron_file.display());
-            }).ok()?;
+            let file = std::fs::File::open(&ron_file)
+                .inspect_err(|e| {
+                    error!(
+                        "Failed to read application state. Could not read file {} err={e}",
+                        ron_file.display()
+                    );
+                })
+                .ok()?;
 
             let reader = std::io::BufReader::new(file);
-            ron::de::from_reader(reader).inspect_err(|e| {
-                error!("Failed to read application state. File contains invalid data {} err={e}", ron_file.display());
-            }).ok()?
+            ron::de::from_reader(reader)
+                .inspect_err(|e| {
+                    error!(
+                        "Failed to read application state. File contains invalid data {} err={e}",
+                        ron_file.display()
+                    );
+                })
+                .ok()?
         } else {
             HashMap::new()
         };
 
-        Some(KVStroage {
+        Some(Self {
             ron_file,
             kv: initial_data,
             dirty: false,
@@ -337,7 +360,7 @@ impl KVStroage {
 }
 
 #[cfg(feature = "persistence")]
-impl Storage for KVStroage {
+impl Storage for KVStorage {
     fn get_string(&self, key: &str) -> Option<String> {
         self.kv.get(key).cloned()
     }
@@ -348,15 +371,83 @@ impl Storage for KVStroage {
     }
 
     fn flush(&mut self) {
-        if self.dirty {
-            write_ron(&self.ron_file, &self.kv);
-            self.dirty = false;
+        if !self.dirty {
+            return;
         }
 
+        let rp = self.ron_file.as_path();
+
+        if let Some(parent) = rp.parent()
+            && !parent.exists()
+        {
+            _ = std::fs::create_dir_all(parent);
+        }
+
+        let Ok(file) = std::fs::File::create(rp).inspect_err(|e| {
+            error!(
+                "Failed to save application state. Could not create file {} err={e}",
+                rp.display()
+            );
+        }) else {
+            return;
+        };
+
+        let mut writer = std::io::BufWriter::new(file);
+        if let Err(e) = ron::Options::default().to_io_writer_pretty(
+            &mut writer,
+            &self.kv,
+            ron::ser::PrettyConfig::default(),
+        ) {
+            error!(
+                "Failed to save application state. Could not write file {} err={e}",
+                rp.display()
+            );
+            return;
+        }
+
+        self.dirty = false;
     }
 }
 
-pub fn run_app<T: App>(app_name: &str, backend_configuration: impl Into<BackendConfiguration>, mut app_factory: impl FnMut(Context) -> T) -> Result<(), Box<dyn Error>> {
+/// Run the app using the selected backend.
+/// If no backend has been selected yet, then this function will also select the optional backend before running the app.
+///
+/// # Errors
+/// * If this function is not called in the main thread.
+/// * If this function is called more than once.
+/// * If `eframe` or the `egui_software_backend` fails.
+///
+/// # Example
+/// ```rust
+/// use egui_backend_selector::{BackendConfiguration, BackendInterop};
+///
+/// struct EguiApp {}
+///
+/// impl EguiApp {
+///     fn new(_context: egui::Context) -> Self {
+///         EguiApp {}
+///     }
+/// }
+///
+/// impl egui_backend_selector::App for EguiApp {
+///     fn update(&mut self, ctx: &egui::Context, backend: BackendInterop<'_>) {
+///         egui::CentralPanel::default().show(ctx, |ui| {
+///             ui.label(format!("Hello World! Running on {}", backend.backend_name()));
+///         });
+///     }
+/// }
+///
+/// fn you_main_function() {
+///     egui_backend_selector::run_app("app-name", BackendConfiguration::default(), |e| EguiApp::new(e))
+///         .expect("failed to run app");
+/// }
+/// ```
+///
+pub fn run_app<T: App>(
+    app_name: &str,
+    backend_configuration: impl Into<BackendConfiguration>,
+    mut app_factory: impl FnMut(Context) -> T,
+) -> Result<(), Box<dyn Error>> {
     if Some(false) == is_main_thread::is_main_thread() {
         return Err("Current thread is not the main thread".into());
     }
@@ -369,24 +460,25 @@ pub fn run_app<T: App>(app_name: &str, backend_configuration: impl Into<BackendC
     match get_backend() {
         None | Some(Backend::SoftwareBackend) => {
             STATE.store(3, Relaxed);
-            let mut cfg_to_use = config.software_backend_options.unwrap_or_else(|| SoftwareBackendAppConfiguration::default());
+            let mut cfg_to_use = config.software_backend_options.unwrap_or_default();
             cfg_to_use.viewport_builder = config.viewport;
 
             let app_name = app_name.to_string();
 
-            if let Err(e) = egui_software_backend::run_app_with_software_backend(cfg_to_use, move |ctx| {
-                #[cfg(feature = "persistence")]
-                let storage :  Option<Box<dyn Storage>> = KVStroage::new(app_name.clone()).map(|a| Box::new(a) as Box<dyn Storage>);
+            if let Err(e) =
+                egui_software_backend::run_app_with_software_backend(cfg_to_use, move |ctx| {
+                    #[cfg(feature = "persistence")]
+                    let storage: Option<Box<dyn Storage>> =
+                        KVStorage::new(&app_name).map(|a| Box::new(a) as Box<dyn Storage>);
 
-                #[cfg(not(feature = "persistence"))]
-                let storage: Option<Box<dyn Storage>> = None;
+                    #[cfg(not(feature = "persistence"))]
+                    let storage: Option<Box<dyn Storage>> = None;
 
-                let integration_info = IntegrationInfo {
-                    cpu_usage: None
-                };
+                    let integration_info = IntegrationInfo { cpu_usage: None };
 
-                AppWrapper(app_factory(ctx), storage, integration_info)
-            }) {
+                    AppWrapper(app_factory(ctx), storage, integration_info)
+                })
+            {
                 return Err(Box::new(e));
             }
 
@@ -394,14 +486,22 @@ pub fn run_app<T: App>(app_name: &str, backend_configuration: impl Into<BackendC
         }
         Some(Backend::Eframe) => {
             STATE.store(4, Relaxed);
-            let mut cfg_to_use = config.eframe_options.unwrap_or_else(|| NativeOptions::default());
+            let mut cfg_to_use = config.eframe_options.unwrap_or_default();
             cfg_to_use.viewport = config.viewport;
 
-            let integration_info = IntegrationInfo {
-                cpu_usage: None
-            };
+            let integration_info = IntegrationInfo { cpu_usage: None };
 
-            if let Err(e) = eframe::run_native(app_name, cfg_to_use, Box::new(move |ctx| Ok(Box::new(AppWrapper(app_factory(ctx.egui_ctx.clone()), None, integration_info))))) {
+            if let Err(e) = eframe::run_native(
+                app_name,
+                cfg_to_use,
+                Box::new(move |ctx| {
+                    Ok(Box::new(AppWrapper(
+                        app_factory(ctx.egui_ctx.clone()),
+                        None,
+                        integration_info,
+                    )))
+                }),
+            ) {
                 return Err(Box::new(e));
             }
 
@@ -410,13 +510,16 @@ pub fn run_app<T: App>(app_name: &str, backend_configuration: impl Into<BackendC
     }
 }
 
+/// Choose backend on Not windows and not linux. (Basically choose eframe everytime)
 #[cfg(all(not(windows), not(target_os = "linux")))]
 fn determine_backend() -> Option<Backend> {
     //macOS and BSD.
     Some(Backend::Eframe)
 }
 
+/// Linux-specific code to decide which backend to use
 #[cfg(target_os = "linux")]
+#[allow(clippy::unnecessary_wraps)]
 fn determine_backend() -> Option<Backend> {
     //We only care about remote display sessions here, because eframe performs poorly on those.
 
@@ -426,9 +529,9 @@ fn determine_backend() -> Option<Backend> {
         return Some(Backend::Eframe);
     };
 
-    if !display.starts_with(":") && !display.contains("/unix:") {
+    if !display.starts_with(':') && !display.contains("/unix:") {
         //This is remote X11 session. OpenGL will be the slowest thing in the universe.
-        return Some(Backend::SoftwareBackend)
+        return Some(Backend::SoftwareBackend);
     }
 
     //We could check if opengl is present, however nearly all linux distros nowadays come with at least mesa llvm-pipe.
@@ -437,6 +540,7 @@ fn determine_backend() -> Option<Backend> {
     Some(Backend::Eframe)
 }
 
+/// Windows-specific code to determine which backend to use.
 #[cfg(windows)]
 fn determine_backend() -> Option<Backend> {
     if Some(false) == is_main_thread::is_main_thread() {
@@ -484,8 +588,6 @@ fn determine_backend() -> Option<Backend> {
         }
     }
 
-
-
     let Ok(mut glfw) = glfw::init::<()>(None) else {
         //No opengl at all, this is some virgin post-installer windows with no drivers.
         return Some(Backend::SoftwareBackend);
@@ -495,8 +597,12 @@ fn determine_backend() -> Option<Backend> {
     glfw.window_hint(glfw::WindowHint::ContextVersion(3, 2));
     glfw.window_hint(glfw::WindowHint::Visible(false));
 
-    let Some((wnd, events)) = glfw
-        .create_window(128, 128, "opengl version detector", glfw::WindowMode::Windowed) else {
+    let Some((wnd, events)) = glfw.create_window(
+        128,
+        128,
+        "opengl version detector",
+        glfw::WindowMode::Windowed,
+    ) else {
         //Opengl is too old. This is a catch-all for "other" hypervisors with insufficient opengl implementations.
         return Some(Backend::SoftwareBackend);
     };

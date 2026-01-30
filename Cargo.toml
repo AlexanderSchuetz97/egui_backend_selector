@@ -2,6 +2,14 @@
 name = "egui_backend_selector"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.86.0"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/AlexanderSchuetz97/egui_backend_selector"
+authors = ["Alexander Schütz <aschuetz@protonmail.com>"]
+keywords = ["egui", "raster", "software", "render", "softbuffer"]
+categories = ["gui"]
+description = "Backend selector for egui that will select a backend at runtime that works on the system your application is running on."
+readme = "README.md"
 
 [features]
 default = ["glow", "persistence"]
