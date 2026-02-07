@@ -5,14 +5,11 @@ use eframe::egui::Context;
 use eframe::{Frame, IntegrationInfo, NativeOptions, Storage};
 use egui::ViewportBuilder;
 use egui_software_backend::{SoftwareBackend, SoftwareBackendAppConfiguration};
-use log::error;
-use std::collections::HashMap;
+use main_thread::IsMainThread;
 use std::error::Error;
 use std::ops::{Deref, DerefMut};
-use std::path::PathBuf;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering::Relaxed;
-use main_thread::IsMainThread;
 
 /// Number of elements in the enum below
 const NUM_BACKENDS: usize = 2;
@@ -313,10 +310,10 @@ impl From<SoftwareBackendAppConfiguration> for BackendConfiguration {
 #[cfg(feature = "persistence")]
 struct KVStorage {
     /// Path to the file where we will save the data.
-    ron_file: PathBuf,
+    ron_file: std::path::PathBuf,
 
     /// The state that was loaded/modified and flush will write to disk.
-    kv: HashMap<String, String>,
+    kv: std::collections::HashMap<String, String>,
 
     /// Did we change anything?
     dirty: bool,
@@ -332,7 +329,7 @@ impl KVStorage {
         let initial_data = if ron_file.exists() {
             let file = std::fs::File::open(&ron_file)
                 .inspect_err(|e| {
-                    error!(
+                    log::error!(
                         "Failed to read application state. Could not read file {} err={e}",
                         ron_file.display()
                     );
@@ -342,14 +339,14 @@ impl KVStorage {
             let reader = std::io::BufReader::new(file);
             ron::de::from_reader(reader)
                 .inspect_err(|e| {
-                    error!(
+                    log::error!(
                         "Failed to read application state. File contains invalid data {} err={e}",
                         ron_file.display()
                     );
                 })
                 .ok()?
         } else {
-            HashMap::new()
+            std::collections::HashMap::new()
         };
 
         Some(Self {
@@ -385,7 +382,7 @@ impl Storage for KVStorage {
         }
 
         let Ok(file) = std::fs::File::create(rp).inspect_err(|e| {
-            error!(
+            log::error!(
                 "Failed to save application state. Could not create file {} err={e}",
                 rp.display()
             );
@@ -399,7 +396,7 @@ impl Storage for KVStorage {
             &self.kv,
             ron::ser::PrettyConfig::default(),
         ) {
-            error!(
+            log::error!(
                 "Failed to save application state. Could not write file {} err={e}",
                 rp.display()
             );
@@ -447,7 +444,7 @@ impl Storage for KVStorage {
 pub fn run_app<T: App>(
     app_name: &str,
     backend_configuration: impl Into<BackendConfiguration>,
-    mut app_factory: impl FnMut(Context) -> T,
+    mut app_factory: impl FnMut(Context, Option<&dyn Storage>) -> T,
 ) -> Result<(), Box<dyn Error>> {
     if IsMainThread::OtherThread == main_thread::is_main_thread() {
         return Err("Current thread is not the main thread".into());
@@ -475,9 +472,16 @@ pub fn run_app<T: App>(
                     #[cfg(not(feature = "persistence"))]
                     let storage: Option<Box<dyn Storage>> = None;
 
+                    #[cfg(not(feature = "persistence"))]
+                    let _ignored = &app_name;
+
                     let integration_info = IntegrationInfo { cpu_usage: None };
 
-                    AppWrapper(app_factory(ctx), storage, integration_info)
+                    AppWrapper(
+                        app_factory(ctx, storage.as_ref().map(Box::as_ref)),
+                        storage,
+                        integration_info,
+                    )
                 })
             {
                 return Err(Box::new(e));
@@ -497,7 +501,7 @@ pub fn run_app<T: App>(
                 cfg_to_use,
                 Box::new(move |ctx| {
                     Ok(Box::new(AppWrapper(
-                        app_factory(ctx.egui_ctx.clone()),
+                        app_factory(ctx.egui_ctx.clone(), ctx.storage),
                         None,
                         integration_info,
                     )))
