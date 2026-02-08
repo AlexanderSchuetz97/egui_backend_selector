@@ -5,11 +5,12 @@
 //! # Example
 //! ```rust
 //! use egui_backend_selector::{BackendConfiguration, BackendInterop};
+//! use eframe::Storage;
 //!
 //! struct EguiApp {}
 //!
 //! impl EguiApp {
-//!     fn new(_context: egui::Context) -> Self {
+//!     fn new(_context: egui::Context, _storage: Option<&dyn Storage>) -> Self {
 //!         EguiApp {}
 //!     }
 //! }
@@ -23,7 +24,7 @@
 //! }
 //!
 //! fn you_main_function() {
-//!     egui_backend_selector::run_app("app-name", BackendConfiguration::default(), |e| EguiApp::new(e))
+//!     egui_backend_selector::run_app("app-name", BackendConfiguration::default(), |ctx, storage| EguiApp::new(ctx, storage))
 //!         .expect("failed to run app");
 //! }
 //! ```
@@ -51,3 +52,7 @@ mod implementation;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub use implementation::*;
+
+#[cfg(doctest)]
+#[doc = include_str!("../README.md")]
+struct ReadmeDocTests;

@@ -30,12 +30,13 @@ as the equivalent of it in DGriffin91's software backend.
 ```rust
 use log::LevelFilter;
 use egui_backend_selector::{BackendConfiguration, BackendInterop};
+use eframe::Storage;
 
 struct EguiApp {}
 
 impl EguiApp {
-    fn new(context: egui::Context) -> Self {
-        egui_extras::install_image_loaders(&context);
+    fn new(context: egui::Context, storage: Option<&dyn Storage>) -> Self {
+        //egui_extras::install_image_loaders(&context); if you want to do this here.
         EguiApp {}
     }
 }
@@ -48,10 +49,10 @@ impl egui_backend_selector::App for EguiApp {
     }
 }
 
-fn main() {
-    _= trivial_log::init_std(LevelFilter::Trace);
-
-    egui_backend_selector::run_app("app-name", BackendConfiguration::default(), |e| EguiApp::new(e))
+fn your_main_function() {
+    //init your logger here.
+  
+    egui_backend_selector::run_app("app-name", BackendConfiguration::default(), |ctx, storage| EguiApp::new(ctx, storage))
         .expect("failed to run app");
 }
 ```

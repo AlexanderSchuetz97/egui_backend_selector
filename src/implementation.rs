@@ -417,12 +417,13 @@ impl Storage for KVStorage {
 ///
 /// # Example
 /// ```rust
+/// use eframe::Storage;
 /// use egui_backend_selector::{BackendConfiguration, BackendInterop};
 ///
 /// struct EguiApp {}
 ///
 /// impl EguiApp {
-///     fn new(_context: egui::Context) -> Self {
+///     fn new(_context: egui::Context, _storage: Option<&dyn Storage>) -> Self {
 ///         EguiApp {}
 ///     }
 /// }
@@ -436,7 +437,7 @@ impl Storage for KVStorage {
 /// }
 ///
 /// fn you_main_function() {
-///     egui_backend_selector::run_app("app-name", BackendConfiguration::default(), |e| EguiApp::new(e))
+///     egui_backend_selector::run_app("app-name", BackendConfiguration::default(), |ctx, storage| EguiApp::new(ctx, storage))
 ///         .expect("failed to run app");
 /// }
 /// ```
